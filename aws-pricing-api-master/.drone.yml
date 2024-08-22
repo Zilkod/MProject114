@@ -1,0 +1,61 @@
+kind: pipeline
+name: default
+
+platform:
+  os: linux
+  arch: amd64
+steps:
+  - name: npm_install
+    image: node:9.11.1
+    commands:
+      - env
+      - yarn
+      - yarn test
+      - yarn build
+  - name: publish
+    image: plugins/docker
+    settings:
+      username: josmo
+      password:
+        from_secret: docker_password
+      repo: peloton/aws-pricing-api
+      auto_tag: true
+      file: Dockerfile
+    when:
+      event: [ push, tag ]
+  - name: helm-lint
+    pull: default
+    image: pelotech/drone-helm3:0.14.2
+    settings:
+      helm_command: lint
+      chart: ./helm/aws-pricing-api
+      wait: true
+    environment:
+      API_SERVER:
+        from_secret: api_server
+      KUBERNETES_TOKEN:
+        from_secret: kubernetes_token
+    when:
+      branch:
+        - master
+      event: [ push, tag ]
+  - name: deploy-tag
+    image: pelotech/drone-helm3:0.14.2
+    settings:
+      chart: ./helm/aws-pricing-api
+      debug: true
+      update_dependencies: true
+      values:
+      - image.tag=${DRONE_TAG}
+      release: classis-pricing
+      namespace: classis
+      wait: true
+      timeout: 200s
+    environment:
+      API_SERVER:
+        from_secret: api_server
+      KUBERNETES_TOKEN:
+        from_secret: kubernetes_token
+    when:
+      event: [ tag ]
+
